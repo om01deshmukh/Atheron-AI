@@ -7,7 +7,7 @@ import {
     MessagePrimitive,
     useComposerRuntime,
 } from "@assistant-ui/react";
-import { ArrowRight, Sparkles, Atom, Dna, Calculator, FlaskConical, Cpu } from "lucide-react";
+import { ArrowRight, Sparkles, Atom, Dna, Calculator, FlaskConical, Cpu, RotateCcw } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -184,7 +184,7 @@ function WelcomeScreen() {
                 </div>
 
                 {/* Input */}
-                <ComposerPrimitive.Root className="flex items-center gap-2 p-2 rounded-2xl border border-[#3a3a3a] bg-[#242424] focus-within:border-[#20b8cd]/50 transition-all shadow-lg">
+                <ComposerPrimitive.Root className="flex items-center gap-2 p-2 rounded-2xl border border-[#3a3a3a] bg-[#242424] transition-all shadow-lg">
                     <ComposerPrimitive.Input
                         placeholder="Ask anything about science, technology, engineering, or mathematics..."
                         className="flex-1 min-h-[48px] px-4 py-3 bg-transparent text-[#f5f5f5] text-lg placeholder:text-[#808080] focus:outline-none resize-none"
@@ -285,11 +285,24 @@ function Composer() {
 }
 
 export function AtheronChat() {
+    const handleNewChat = () => {
+        window.location.reload();
+    };
+
     return (
         <ThreadPrimitive.Root
-            className="dark h-screen bg-[#1a1a1a] text-[#f5f5f5] flex flex-col"
+            className="dark h-screen bg-[#1a1a1a] text-[#f5f5f5] flex flex-col relative"
             style={{ ["--thread-max-width" as string]: "42rem" }}
         >
+            {/* New Chat Button */}
+            <button
+                onClick={handleNewChat}
+                className="absolute top-4 right-4 z-10 p-2.5 rounded-xl bg-[#242424] border border-[#3a3a3a] text-[#808080] hover:text-[#20b8cd] hover:border-[#20b8cd]/50 transition-all"
+                title="New Chat"
+            >
+                <RotateCcw className="w-5 h-5" />
+            </button>
+
             {/* Thread Content */}
             <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto">
                 <ThreadPrimitive.Empty>

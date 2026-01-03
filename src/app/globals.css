@@ -34,6 +34,11 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   min-height: 100vh;
+  overflow-x: hidden;
+}
+
+html {
+  overflow-x: hidden;
 }
 
 /* Custom scrollbar */
@@ -61,10 +66,40 @@ body {
   color: var(--background);
 }
 
-/* Focus */
-*:focus-visible {
+/* Focus - exclude form inputs */
+button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Remove ALL focus outlines from form inputs */
+textarea,
+input,
+textarea:focus,
+input:focus,
+textarea:focus-visible,
+input:focus-visible,
+textarea:focus-within,
+input:focus-within,
+[role="textbox"],
+[role="textbox"]:focus,
+[contenteditable],
+[contenteditable]:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+  -webkit-appearance: none !important;
+}
+
+/* Target assistant-ui components specifically */
+[data-radix-focus-guard],
+[data-radix-focus-guard]:focus {
+  outline: none !important;
+}
+
+form:focus-within,
+div:focus-within {
+  outline: none !important;
 }
 
 /* Prose overrides for markdown content */
