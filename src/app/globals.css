@@ -81,17 +81,20 @@ body {
   flex-direction: column;
 }
 
-/* Header */
+/* Header - Glassmorphism */
 .chat-header {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 20;
-  padding: 1rem;
+  padding: 0.875rem 1rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background: rgba(25, 26, 26, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 /* Welcome Screen - TRUE CENTER */
