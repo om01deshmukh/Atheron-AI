@@ -84,22 +84,70 @@ function TypewriterText({ text }: { text: string }) {
     );
 }
 
+// ============ LOADING ANIMATION ============
+function LoadingAnimation() {
+    const [charIndex, setCharIndex] = useState(0);
+    const text = "Hold on, travelling at the speed of light...";
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setCharIndex(prev => {
+                if (prev >= text.length) {
+                    // Reset after a pause
+                    setTimeout(() => setCharIndex(0), 500);
+                    return prev;
+                }
+                return prev + 1;
+            });
+        }, 50);
+        return () => clearInterval(interval);
+    }, []);
+
+    return (
+        <div className="loading-animation">
+            <div className="loading-text">
+                {text.split('').map((char, i) => (
+                    <span
+                        key={i}
+                        className={i < charIndex ? 'loading-char-visible' : 'loading-char-hidden'}
+                    >
+                        {char}
+                    </span>
+                ))}
+            </div>
+            <div className="loading-dots">
+                <span className="loading-dot" style={{ animationDelay: '0ms' }}>.</span>
+                <span className="loading-dot" style={{ animationDelay: '200ms' }}>.</span>
+                <span className="loading-dot" style={{ animationDelay: '400ms' }}>.</span>
+            </div>
+        </div>
+    );
+}
+
 // ============ PARSE SOURCES FROM CONTENT ============
 function parseSourcesFromContent(content: string): { cleanContent: string; sources: Source[] } {
     const sourcesMatch = content.match(/<!-- SOURCES_START -->([\s\S]*?)<!-- SOURCES_END -->/);
 
-    if (!sourcesMatch) {
-        return { cleanContent: content, sources: [] };
+    let cleanContent = content;
+    let sources: Source[] = [];
+
+    // Remove the sources block
+    if (sourcesMatch) {
+        try {
+            const sourcesJson = sourcesMatch[1].trim();
+            sources = JSON.parse(sourcesJson) as Source[];
+            cleanContent = cleanContent.replace(/<!-- SOURCES_START -->[\s\S]*?<!-- SOURCES_END -->/g, '').trim();
+        } catch (e) {
+            // JSON parse failed, continue
+        }
     }
 
-    try {
-        const sourcesJson = sourcesMatch[1].trim();
-        const sources = JSON.parse(sourcesJson) as Source[];
-        const cleanContent = content.replace(/<!-- SOURCES_START -->[\s\S]*?<!-- SOURCES_END -->/g, '').trim();
-        return { cleanContent, sources };
-    } catch (e) {
-        return { cleanContent: content, sources: [] };
-    }
+    // Remove citation numbers like [1], [2], [1][2], etc.
+    cleanContent = cleanContent.replace(/\[\d+\]/g, '');
+    // Clean up any double spaces left behind
+    cleanContent = cleanContent.replace(/  +/g, ' ').trim();
+
+    return { cleanContent, sources };
 }
 
 // ============ SOURCES PANEL ============
@@ -192,11 +240,7 @@ function MarkdownContent({ content, onSourcesParsed }: { content: string; onSour
     }, [sources.length, onSourcesParsed]);
 
     if (!cleanContent) {
-        return (
-            <div className="loading-message">
-                Hold on tight, travelling at the speed of light...
-            </div>
-        );
+        return <LoadingAnimation />;
     }
 
     return (

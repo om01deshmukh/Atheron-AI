@@ -1,4 +1,27 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap');
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('/fonts/SFPRODISPLAYREGULAR.OTF') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('/fonts/SFPRODISPLAYMEDIUM.OTF') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('/fonts/SFPRODISPLAYBOLD.OTF') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 @import "tailwindcss";
 
 :root {
@@ -11,8 +34,8 @@
   --surface-light: #2a2c2c;
   --border: #313333;
   --text-muted: #9a9a9a;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-editorial: 'Playfair Display', Georgia, serif;
+  --font-sans: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-editorial: 'SF Pro Display', Georgia, serif;
 }
 
 *,
@@ -37,7 +60,7 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans);
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
   font-size: 15px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -492,6 +515,68 @@ body {
 .loading-message {
   color: var(--text-muted);
   font-style: italic;
+}
+
+.loading-animation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.loading-text {
+  font-size: 1rem;
+  color: var(--cyan);
+  font-weight: 500;
+}
+
+.loading-char-visible {
+  opacity: 1;
+  background: linear-gradient(90deg, var(--cyan), var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: charGlow 0.3s ease-out;
+}
+
+.loading-char-hidden {
+  opacity: 0.2;
+  color: var(--text-muted);
+}
+
+@keyframes charGlow {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.loading-dots {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.loading-dot {
+  color: var(--cyan);
+  font-size: 1.5rem;
+  animation: bounce 1s ease-in-out infinite;
+}
+
+@keyframes bounce {
+
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+  }
+
+  40% {
+    transform: translateY(-6px);
+  }
 }
 
 /* Action Bar */

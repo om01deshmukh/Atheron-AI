@@ -1,16 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Athey - AI Space & Cosmos Assistant",
@@ -35,10 +24,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        suppressHydrationWarning
-      >
+      <head>
+        {/* Preload SF Pro Display font */}
+        <link
+          rel="preload"
+          href="/fonts/SFPRODISPLAYREGULAR.OTF"
+          as="font"
+          type="font/otf"
+          crossOrigin="anonymous"
+        />
+      </head>
+      <body suppressHydrationWarning>
         {children}
       </body>
     </html>
