@@ -131,16 +131,21 @@ function parseSourcesFromContent(content: string): { cleanContent: string; sourc
     let cleanContent = content;
     let sources: Source[] = [];
 
-    // Remove the sources block
+    // Remove the sources block (always strip the markers, even if JSON parse fails)
     if (sourcesMatch) {
-        try {
-            const sourcesJson = sourcesMatch[1].trim();
-            sources = JSON.parse(sourcesJson) as Source[];
-            cleanContent = cleanContent.replace(/<!-- SOURCES_START -->[\s\S]*?<!-- SOURCES_END -->/g, '').trim();
-        } catch (e) {
-            // JSON parse failed, continue
+        const sourcesJson = sourcesMatch[1].trim();
+        // Only parse if there's actual content
+        if (sourcesJson && sourcesJson.startsWith('[')) {
+            try {
+                sources = JSON.parse(sourcesJson) as Source[];
+            } catch (e) {
+                // JSON parse failed, sources remain empty
+            }
         }
     }
+
+    // Always strip the source markers from content, regardless of whether parsing succeeded
+    cleanContent = cleanContent.replace(/<!-- SOURCES_START -->[\s\S]*?<!-- SOURCES_END -->/g, '').trim();
 
     // Remove citation numbers like [1], [2], [1][2], etc.
     cleanContent = cleanContent.replace(/\[\d+\]/g, '');

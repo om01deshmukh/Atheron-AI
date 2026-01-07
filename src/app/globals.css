@@ -525,16 +525,13 @@ body {
 
 .loading-text {
   font-size: 1rem;
-  color: var(--cyan);
+  color: white;
   font-weight: 500;
 }
 
 .loading-char-visible {
   opacity: 1;
-  background: linear-gradient(90deg, var(--cyan), var(--accent));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: white;
   animation: charGlow 0.3s ease-out;
 }
 
@@ -561,7 +558,7 @@ body {
 }
 
 .loading-dot {
-  color: var(--cyan);
+  color: white;
   font-size: 1.5rem;
   animation: bounce 1s ease-in-out infinite;
 }

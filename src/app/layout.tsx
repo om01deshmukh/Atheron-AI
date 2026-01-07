@@ -14,6 +14,14 @@ export const metadata: Metadata = {
     title: "Athey - AI Space & Cosmos Assistant",
     description: "Real-time satellite tracking, SpaceX launches, and cosmic exploration with Athey",
     type: "website",
+    images: [
+      {
+        url: "/opengl.png",
+        width: 1200,
+        height: 630,
+        alt: "Athey - AI Space & Cosmos Assistant",
+      },
+    ],
   },
 };
 
