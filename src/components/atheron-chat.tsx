@@ -1,17 +1,28 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import {
     ThreadPrimitive,
     ComposerPrimitive,
     MessagePrimitive,
+    useThread,
 } from "@assistant-ui/react";
-import { ArrowRight, Sparkles, RotateCcw, X, ExternalLink, Copy, Share2, Download, RefreshCw, Check } from "lucide-react";
+import { ArrowRight, Sparkles, RotateCcw, X, ExternalLink, Copy, Share2, Download, RefreshCw, Check, LogOut } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import "katex/dist/katex.min.css";
+import {
+    SignInButton,
+    SignUpButton,
+    SignedIn,
+    SignedOut,
+    UserButton,
+    useUser,
+} from "@clerk/nextjs";
+import { createChatSession, saveMessage, updateChatSessionTitle, generateChatTitle } from "@/lib/db";
+import { ChatSession, Message } from "@/lib/supabase";
 
 // ============ TYPES ============
 interface Source {
@@ -282,15 +293,65 @@ function LogoHeader() {
 }
 
 // ============ NEW CHAT BUTTON ============
-function NewChatButton() {
+function NewChatButton({ onNewChat }: { onNewChat?: () => void }) {
+    const handleClick = () => {
+        console.log('[NewChatButton] clicked, onNewChat:', !!onNewChat);
+        if (onNewChat) {
+            onNewChat();
+        } else {
+            window.location.reload();
+        }
+    };
+
     return (
         <button
-            onClick={() => window.location.reload()}
+            onClick={handleClick}
             className="p-2.5 rounded-xl bg-[#202222] border border-[#313333] text-gray-400 hover:text-[#20b8cd] hover:border-[#20b8cd]/50 transition-all"
             title="New Chat"
         >
             <RotateCcw className="w-5 h-5" />
         </button>
+    );
+}
+
+// ============ USER PROFILE HEADER ============
+function UserProfileHeader() {
+    const { user } = useUser();
+
+    return (
+        <div className="flex items-center gap-3">
+            <SignedOut>
+                <SignInButton mode="modal">
+                    <button className="px-4 py-2 rounded-lg bg-[#202222] border border-[#313333] text-gray-300 hover:text-white hover:border-[#6c47ff]/50 transition-all text-sm font-medium">
+                        Sign In
+                    </button>
+                </SignInButton>
+                <SignUpButton mode="modal">
+                    <button className="px-4 py-2 rounded-lg bg-[#6c47ff] text-white hover:bg-[#5a3dd6] transition-all text-sm font-medium">
+                        Sign Up
+                    </button>
+                </SignUpButton>
+            </SignedOut>
+            <SignedIn>
+                <div className="flex items-center gap-3">
+                    <span className="text-sm text-gray-300 hidden sm:block">
+                        {user?.firstName || user?.emailAddresses?.[0]?.emailAddress?.split('@')[0] || 'User'}
+                    </span>
+                    <UserButton
+                        appearance={{
+                            elements: {
+                                avatarBox: "w-9 h-9",
+                                userButtonPopoverCard: "bg-[#0a0a0a] border border-[#313333]",
+                                userButtonPopoverActionButton: "text-gray-300 hover:text-white hover:bg-[#202222]",
+                                userButtonPopoverActionButtonText: "text-gray-300",
+                                userButtonPopoverActionButtonIcon: "text-gray-400",
+                                userButtonPopoverFooter: "hidden",
+                            }
+                        }}
+                    />
+                </div>
+            </SignedIn>
+        </div>
     );
 }
 
@@ -453,33 +514,198 @@ function Composer() {
 }
 
 // ============ MAIN COMPONENT ============
-export function AtheronChat() {
+interface AtheronChatProps {
+    loadedMessages?: Message[];
+    currentSessionId: string | null;
+    onUserMessage: (content: string) => Promise<string | null>;
+    onAssistantMessage: (content: string, sessionId: string | null) => Promise<void>;
+    onNewChat?: () => void;
+}
+
+export function AtheronChat({
+    loadedMessages = [],
+    currentSessionId,
+    onUserMessage,
+    onAssistantMessage,
+    onNewChat
+}: AtheronChatProps) {
+    const [sessionId, setSessionId] = useState<string | null>(currentSessionId);
+    const lastSavedAssistantRef = useRef<string>("");
+    const lastSavedUserRef = useRef<string>("");
+    const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const userMessageCountRef = useRef(0);
+
+    // Sync session ID from props
+    useEffect(() => {
+        setSessionId(currentSessionId);
+        // Reset refs when session changes
+        lastSavedAssistantRef.current = "";
+        lastSavedUserRef.current = "";
+        userMessageCountRef.current = loadedMessages.filter(m => m.role === 'user').length;
+    }, [currentSessionId, loadedMessages]);
+
+    // Watch for user messages to save them
+    useEffect(() => {
+        // Initial sync to avoid detecting pre-existing messages (like from reloads) as new
+        const initialUserBubbles = document.querySelectorAll('.user-message-bubble');
+        const initialLiveBubbles = Array.from(initialUserBubbles).filter(
+            el => !el.classList.contains('loaded-user-msg')
+        );
+
+        // If we have live bubbles but count is 0 (or less than actual), update count to ignore them
+        if (initialLiveBubbles.length > userMessageCountRef.current) {
+            userMessageCountRef.current = initialLiveBubbles.length;
+            // Also update the last saved ref to the last message content so we don't save it if it triggers
+            const lastText = initialLiveBubbles[initialLiveBubbles.length - 1]?.textContent?.trim() || "";
+            lastSavedUserRef.current = lastText;
+        }
+
+        const checkUserMessage = async () => {
+            const userBubbles = document.querySelectorAll('.user-message-bubble');
+            const liveUserBubbles = Array.from(userBubbles).filter(
+                el => !el.classList.contains('loaded-user-msg')
+            );
+
+            if (liveUserBubbles.length > userMessageCountRef.current) {
+                const lastUserBubble = liveUserBubbles[liveUserBubbles.length - 1];
+                const text = lastUserBubble?.textContent?.trim() || "";
+
+                if (text && text !== lastSavedUserRef.current) {
+                    lastSavedUserRef.current = text;
+                    userMessageCountRef.current = liveUserBubbles.length;
+
+                    // Call parent to save and potentially create session
+                    const newSessionId = await onUserMessage(text);
+                    if (newSessionId && !sessionId) {
+                        setSessionId(newSessionId);
+                    }
+                }
+            }
+        };
+
+        const observer = new MutationObserver(checkUserMessage);
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        return () => observer.disconnect();
+    }, [sessionId, onUserMessage]);
+
+    // Watch for assistant messages to save them (debounced)
+    useEffect(() => {
+        if (!sessionId) return;
+        // Skip observer if viewing loaded history (check current prop value)
+        const hasHistory = loadedMessages.length > 0;
+        if (hasHistory) return;
+
+        const checkAssistantMessage = () => {
+            // Only look at markdown content NOT inside .loaded-history
+            const allMarkdown = document.querySelectorAll('.markdown-content');
+            const liveMarkdown = Array.from(allMarkdown).filter(
+                el => !el.closest('.loaded-history')
+            );
+
+            if (liveMarkdown.length > 0) {
+                const lastContent = liveMarkdown[liveMarkdown.length - 1];
+                const text = lastContent?.textContent?.trim() || "";
+
+                // Debounce save - wait for streaming to complete
+                if (text && text.length > 50 && !text.includes("Hold on")) {
+                    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+
+                    saveTimeoutRef.current = setTimeout(() => {
+                        if (text !== lastSavedAssistantRef.current) {
+                            lastSavedAssistantRef.current = text;
+                            console.log('[Chat] Saving assistant message to session:', sessionId);
+                            onAssistantMessage(text, sessionId);
+                        }
+                    }, 3000); // Wait 3 seconds after last change
+                }
+            }
+        };
+
+        const observer = new MutationObserver(checkAssistantMessage);
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        return () => {
+            observer.disconnect();
+            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        };
+    }, [sessionId, onAssistantMessage, loadedMessages.length]);
+
+    const hasLoadedMessages = loadedMessages.length > 0;
+
     return (
         <>
             <VideoBackground />
 
             <div className="chat-container">
                 <ThreadPrimitive.Root className="h-full flex flex-col">
-                    {/* Header */}
+                    {/* Header - User controls only */}
                     <div className="chat-header">
-                        <LogoHeader />
-                        <NewChatButton />
+                        <div /> {/* Empty spacer for flex justify-between */}
+                        <div className="flex items-center gap-3">
+                            <UserProfileHeader />
+                            <NewChatButton onNewChat={onNewChat} />
+                        </div>
                     </div>
 
                     {/* Main Content */}
                     <ThreadPrimitive.Viewport className="messages-viewport">
-                        <ThreadPrimitive.Empty>
-                            <WelcomeScreen />
-                        </ThreadPrimitive.Empty>
-                        <Messages />
+                        {/* Display loaded historical messages */}
+                        {hasLoadedMessages && (
+                            <div className="loaded-history">
+                                {loadedMessages.map((msg, index) => (
+                                    msg.role === 'user' ? (
+                                        <div key={msg.id || index} className="user-message-wrapper">
+                                            <div className="message-container">
+                                                <div className="user-message-row">
+                                                    <div className="user-message-bubble loaded-user-msg">
+                                                        {msg.content}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div key={msg.id || index} className="assistant-message-wrapper">
+                                            <div className="message-container">
+                                                <div className="assistant-message-content">
+                                                    <div className="answer-header">
+                                                        <Sparkles className="w-4 h-4" />
+                                                        <span>Answer</span>
+                                                    </div>
+                                                    <MarkdownContent content={msg.content} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Welcome screen only when no history */}
+                        {!hasLoadedMessages && (
+                            <ThreadPrimitive.Empty>
+                                <WelcomeScreen />
+                            </ThreadPrimitive.Empty>
+                        )}
+
+                        {/* Live messages - only when NOT viewing history */}
+                        {!hasLoadedMessages && <Messages />}
                     </ThreadPrimitive.Viewport>
 
-                    {/* Follow-up Input */}
-                    <ThreadPrimitive.If running={false} empty={false}>
+                    {/* Composer - always show for loaded chats, conditional for new */}
+                    {hasLoadedMessages ? (
                         <Composer />
-                    </ThreadPrimitive.If>
+                    ) : (
+                        <ThreadPrimitive.If running={false} empty={false}>
+                            <Composer />
+                        </ThreadPrimitive.If>
+                    )}
                 </ThreadPrimitive.Root>
             </div>
         </>
     );
 }
+
+
+
+
