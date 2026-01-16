@@ -30,7 +30,7 @@ export async function getOrCreateUser(clerkId: string, email: string, name?: str
         .single()
 
     if (createError) {
-        console.error('Error creating user:', createError)
+        console.error('Error creating user:', JSON.stringify(createError, null, 2))
         return null
     }
 

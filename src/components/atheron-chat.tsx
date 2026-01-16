@@ -1,11 +1,13 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import {
     ThreadPrimitive,
     ComposerPrimitive,
     MessagePrimitive,
     useThread,
+    useThreadRuntime,
+    useMessage,
 } from "@assistant-ui/react";
 import { ArrowRight, Sparkles, RotateCcw, X, ExternalLink, Copy, Share2, Download, RefreshCw, Check, LogOut } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -23,6 +25,17 @@ import {
 } from "@clerk/nextjs";
 import { createChatSession, saveMessage, updateChatSessionTitle, generateChatTitle } from "@/lib/db";
 import { ChatSession, Message } from "@/lib/supabase";
+import TTSControls from "@/components/TTSControls";
+import VoiceInput from "@/components/VoiceInput";
+import { useTTS } from "@/hooks/useTTS";
+
+// ============ VOICE CONTEXT ============
+interface VoiceContextType {
+    autoReadResponse: boolean;
+    setAutoReadResponse: (value: boolean) => void;
+}
+const VoiceContext = React.createContext<VoiceContextType>({ autoReadResponse: false, setAutoReadResponse: () => { } });
+
 
 // ============ TYPES ============
 interface Source {
@@ -137,6 +150,14 @@ function LoadingAnimation() {
 
 // ============ PARSE SOURCES FROM CONTENT ============
 function parseSourcesFromContent(content: string): { cleanContent: string; sources: Source[] } {
+    if (!content.includes("<!-- SOURCES_START -->")) {
+        // Quick path: just strict replace citation numbers if any, or skip if mostly unlikely?
+        // Let's at least do the cheap cleanup or return early if needed.
+        // Actually, the regex for sources block is heavy. If not present, skip it.
+        // But we still need to clean citation numbers [1].
+        let cleanContent = content.replace(/\[\d+\]/g, '').replace(/  +/g, ' ').trim();
+        return { cleanContent, sources: [] };
+    }
     const sourcesMatch = content.match(/<!-- SOURCES_START -->([\s\S]*?)<!-- SOURCES_END -->/);
 
     let cleanContent = content;
@@ -214,7 +235,7 @@ function SourcesPanel({ sources, onClose }: { sources: Source[]; onClose: () => 
 }
 
 // ============ SOURCES BUTTON ============
-function SourcesButton({ sources }: { sources: Source[] }) {
+const SourcesButton = React.memo(function SourcesButton({ sources }: { sources: Source[] }) {
     const [showPanel, setShowPanel] = useState(false);
 
     if (sources.length === 0) return null;
@@ -241,11 +262,11 @@ function SourcesButton({ sources }: { sources: Source[] }) {
             {showPanel && <SourcesPanel sources={sources} onClose={() => setShowPanel(false)} />}
         </>
     );
-}
+});
 
 // ============ MARKDOWN RENDERER ============
-function MarkdownContent({ content, onSourcesParsed }: { content: string; onSourcesParsed?: (sources: Source[]) => void }) {
-    const { cleanContent, sources } = parseSourcesFromContent(content);
+const MarkdownContent = React.memo(function MarkdownContent({ content, onSourcesParsed }: { content: string; onSourcesParsed?: (sources: Source[]) => void }) {
+    const { cleanContent, sources } = React.useMemo(() => parseSourcesFromContent(content), [content]);
     const hasReportedSources = useRef(false);
 
     useEffect(() => {
@@ -267,9 +288,10 @@ function MarkdownContent({ content, onSourcesParsed }: { content: string; onSour
             >
                 {cleanContent}
             </ReactMarkdown>
+            <TTSControls text={cleanContent} />
         </div>
     );
-}
+});
 
 // ============ LOGO HEADER ============
 function LogoHeader() {
@@ -369,11 +391,14 @@ function WelcomeScreen() {
                     </p>
                 </div>
 
-                <ComposerPrimitive.Root className="input-container">
+                <ComposerPrimitive.Root className="input-container relative">
                     <ComposerPrimitive.Input
                         placeholder="Ask anything about space..."
-                        className="input-field"
+                        className="input-field pr-24"
                     />
+                    <div className="absolute right-14 top-1/2 -translate-y-1/2">
+                        <ChatVoiceInputWrapper />
+                    </div>
                     <ComposerPrimitive.Send className="send-button">
                         <ArrowRight className="w-5 h-5" />
                     </ComposerPrimitive.Send>
@@ -383,27 +408,14 @@ function WelcomeScreen() {
     );
 }
 
-// ============ USER MESSAGE - RIGHT ALIGNED ============
-function UserMessage() {
-    return (
-        <div className="user-message-wrapper">
-            <div className="message-container">
-                <div className="user-message-row">
-                    <div className="user-message-bubble">
-                        <MessagePrimitive.Content />
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
+
 
 // ============ ASSISTANT MESSAGE - LEFT ALIGNED ============
 function TextPartWithSources({ text, onSourcesParsed }: { text: string; onSourcesParsed: (sources: Source[]) => void }) {
     return <MarkdownContent content={text} onSourcesParsed={onSourcesParsed} />;
 }
 // ============ ACTION BUTTONS ============
-function ActionButtons({ content, sources }: { content: string; sources: Source[] }) {
+const ActionButtons = React.memo(function ActionButtons({ content, sources }: { content: string; sources: Source[] }) {
     const [copied, setCopied] = useState(false);
 
     const handleCopy = async () => {
@@ -451,12 +463,18 @@ function ActionButtons({ content, sources }: { content: string; sources: Source[
             </div>
         </div>
     );
-}
+});
 
 function AssistantMessage() {
     const [sources, setSources] = useState<Source[]>([]);
     const contentRef = useRef("");
     const sourcesRef = useRef<Source[]>([]);
+
+    // Access message content for stable AutoReadHandler
+    const message = useMessage((m: any) => m);
+    const textContent = Array.isArray(message.content)
+        ? message.content.map((c: any) => c.type === 'text' ? c.text : '').join('')
+        : typeof message.content === 'string' ? message.content : '';
 
     // Memoize callback to prevent infinite loops
     const handleSourcesParsed = (newSources: Source[]) => {
@@ -482,7 +500,54 @@ function AssistantMessage() {
                             }
                         }}
                     />
-                    <ActionButtons content={contentRef.current} sources={sources} />
+                    <AutoReadHandler text={textContent} />
+                    <ActionButtons content={textContent} sources={sources} />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// Special component to handle auto-reading without re-rendering the whole message tree too often
+function AutoReadHandler({ text }: { text: string }) {
+    const { autoReadResponse, setAutoReadResponse } = React.useContext(VoiceContext);
+    const { start } = useTTS(text);
+    const hasStartedRef = useRef(false);
+
+    // Check message status to ensuring we only read when done
+    const isInProgress = useMessage((m: any) => m.status === "in_progress");
+
+    useEffect(() => {
+        // Only auto-read if enabled, text is substantial, we haven't started yet, AND message is complete
+        if (autoReadResponse && text.length > 10 && !hasStartedRef.current && !isInProgress) {
+            console.log("Auto-reading complete response...");
+            start();
+            hasStartedRef.current = true;
+            // Turn off auto-read so subsequent renders or future messages strictly require a new voice trigger
+            setAutoReadResponse(false);
+        }
+    }, [text, autoReadResponse, setAutoReadResponse, start, isInProgress]);
+
+    return null;
+}
+
+// ============ USER MESSAGE ============
+function UserMessage() {
+    const message = useMessage((m: any) => m);
+    const textContent = Array.isArray(message.content)
+        ? message.content.map((c: any) => c.type === 'text' ? c.text : '').join('')
+        : typeof message.content === 'string' ? message.content : '';
+
+    return (
+        <div className="user-message-wrapper">
+            <div className="message-container">
+                <div className="user-message-row">
+                    <div className="user-message-bubble">
+                        <MessagePrimitive.Content />
+                    </div>
+                    <div className="mt-1 mr-1">
+                        <TTSControls text={textContent} />
+                    </div>
                 </div>
             </div>
         </div>
@@ -499,11 +564,14 @@ function Composer() {
     return (
         <div className="composer-wrapper">
             <div className="composer-inner">
-                <ComposerPrimitive.Root className="composer-box">
+                <ComposerPrimitive.Root className="composer-box relative">
                     <ComposerPrimitive.Input
                         placeholder="Ask a follow-up..."
-                        className="composer-input"
+                        className="composer-input pr-20"
                     />
+                    <div className="absolute right-12 top-1/2 -translate-y-1/2">
+                        <ChatVoiceInputWrapper />
+                    </div>
                     <ComposerPrimitive.Send className="composer-send">
                         <ArrowRight className="w-4 h-4" />
                     </ComposerPrimitive.Send>
@@ -523,6 +591,52 @@ interface AtheronChatProps {
 }
 
 export function AtheronChat({
+    loadedMessages = [],
+    currentSessionId,
+    onUserMessage,
+    onAssistantMessage,
+    onNewChat
+}: AtheronChatProps) {
+    return (
+        <VoiceProviderWrapper>
+            <AtheronChatContent
+                loadedMessages={loadedMessages}
+                currentSessionId={currentSessionId}
+                onUserMessage={onUserMessage}
+                onAssistantMessage={onAssistantMessage}
+                onNewChat={onNewChat}
+            />
+        </VoiceProviderWrapper>
+    );
+}
+
+function VoiceProviderWrapper({ children }: { children: React.ReactNode }) {
+    const [autoReadResponse, setAutoReadResponse] = useState(false);
+    return (
+        <VoiceContext.Provider value={{ autoReadResponse, setAutoReadResponse }}>
+            {children}
+        </VoiceContext.Provider>
+    );
+}
+
+// Wrapper to access context for the input
+function ChatVoiceInputWrapper() {
+    const { setAutoReadResponse } = React.useContext(VoiceContext);
+    const runtime = useThreadRuntime();
+
+    const handleVoiceSubmit = useCallback((text: string) => {
+        setAutoReadResponse(true);
+        runtime.append({
+            role: "user",
+            content: [{ type: "text", text }],
+        });
+    }, [runtime, setAutoReadResponse]);
+
+    return <VoiceInput onMessageSubmit={handleVoiceSubmit} />;
+}
+
+
+function AtheronChatContent({
     loadedMessages = [],
     currentSessionId,
     onUserMessage,
@@ -660,6 +774,9 @@ export function AtheronChat({
                                                 <div className="user-message-row">
                                                     <div className="user-message-bubble loaded-user-msg">
                                                         {msg.content}
+                                                    </div>
+                                                    <div className="mt-1 mr-1">
+                                                        <TTSControls text={msg.content} />
                                                     </div>
                                                 </div>
                                             </div>

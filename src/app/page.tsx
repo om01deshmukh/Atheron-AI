@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import {
   useChatRuntime,
@@ -17,7 +18,11 @@ import {
 import { getOrCreateUser, getChatSessions, getMessages, createChatSession, saveMessage, generateChatTitle, ChatSession } from "@/lib/db";
 import { User, Message } from "@/lib/supabase";
 
-function ChatApp() {
+const ChatApp = dynamic(() => Promise.resolve(ChatAppComponent), {
+  ssr: false,
+});
+
+function ChatAppComponent() {
   const { user: clerkUser, isLoaded } = useUser();
   const [dbUser, setDbUser] = useState<User | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
